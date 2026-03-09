@@ -1,0 +1,56 @@
+# Zabbix server connection settings
+zabbix:
+  url: "http://your-zabbix-server/zabbix"
+  user: "Admin"
+  password: "zabbix"
+
+# List of monitored systems (SUT/NUC)
+systems:
+  - name: "SUT-01"
+    host: "192.168.1.101"
+    zabbix_hostname: "SUT-01"
+  - name: "SUT-02"
+    host: "192.168.1.102"
+    zabbix_hostname: "SUT-02"
+  - name: "NUC-01"
+    host: "192.168.1.103"
+    zabbix_hostname: "NUC-01"
+
+# SSH credentials used to send the sleep command to each system
+ssh:
+  username: "root"
+  # Use either password or key_file (key_file takes precedence when set)
+  password: "your_ssh_password"
+  key_file: ""           # e.g. "/home/user/.ssh/id_rsa"
+  port: 22
+  timeout: 10            # seconds
+  # Path to the SSH known_hosts file for host key verification.
+  # Ensure all target systems are added here before running.
+  known_hosts_file: "~/.ssh/known_hosts"
+
+# AI model settings
+model:
+  # Path where the trained model file will be saved / loaded from
+  model_path: "sleep_model.joblib"
+  # Path to a labelled CSV dataset used for (re-)training the model.
+  # Leave empty to use the built-in rule-based auto-labeller on live data.
+  training_data_path: ""
+  # Minimum prediction probability required to classify a system as "idle"
+  idle_threshold: 0.7
+
+# Idle-detection settings
+idle_detection:
+  # How long (seconds) a system must remain "idle" before it is put to sleep
+  idle_duration_seconds: 600   # 10 minutes
+  # How often (seconds) metrics are collected and evaluated
+  poll_interval_seconds: 60
+
+# Rule-based thresholds used for auto-labelling training data
+# (also used when running in rule-only mode without a trained model)
+thresholds:
+  cpu_idle_percent: 5.0          # CPU utilisation above this → active (threshold for idle detection)
+  disk_read_bps: 102400          # Disk read  bytes/s below this → idle (100 KB/s)
+  disk_write_bps: 102400         # Disk write bytes/s below this → idle (100 KB/s)
+  network_recv_bps: 51200        # Network recv bytes/s below this → idle  (50 KB/s)
+  network_sent_bps: 51200        # Network sent bytes/s below this → idle  (50 KB/s)
+  system_idle_time_percent: 95.0 # System idle time above this → idle
