@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Model artifacts
+*.joblib
+
+# Pytest cache
+.pytest_cache/
+
+# Editors
+.vscode/
+.idea/
+*.swp
