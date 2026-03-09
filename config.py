@@ -3,14 +3,19 @@ Configuration for the AI-based System Sleep Manager.
 
 Contains thresholds for system state classification, database settings,
 Zabbix settings, LSTM model parameters, and fuzzy logic parameters.
+
+Credentials are read from environment variables with sensible defaults
+for local development only.
 """
+
+import os
 
 # ---------------------------------------------------------------------------
 # Zabbix Configuration
 # ---------------------------------------------------------------------------
-ZABBIX_URL = "http://localhost/zabbix/api_jsonrpc.php"
-ZABBIX_USER = "Admin"
-ZABBIX_PASSWORD = "zabbix"
+ZABBIX_URL = os.environ.get("ZABBIX_URL", "http://localhost/zabbix/api_jsonrpc.php")
+ZABBIX_USER = os.environ.get("ZABBIX_USER", "Admin")
+ZABBIX_PASSWORD = os.environ.get("ZABBIX_PASSWORD", "zabbix")
 
 # Zabbix item keys for monitored metrics
 ZABBIX_ITEM_KEYS = {
@@ -26,11 +31,11 @@ ZABBIX_ITEM_KEYS = {
 # ---------------------------------------------------------------------------
 # PostgreSQL Configuration
 # ---------------------------------------------------------------------------
-DB_HOST = "localhost"
-DB_PORT = 5432
-DB_NAME = "system_monitor"
-DB_USER = "postgres"
-DB_PASSWORD = "postgres"
+DB_HOST = os.environ.get("DB_HOST", "localhost")
+DB_PORT = int(os.environ.get("DB_PORT", "5432"))
+DB_NAME = os.environ.get("DB_NAME", "system_monitor")
+DB_USER = os.environ.get("DB_USER", "postgres")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "postgres")
 
 # ---------------------------------------------------------------------------
 # System State Thresholds

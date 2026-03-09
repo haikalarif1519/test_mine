@@ -28,21 +28,39 @@ logger = logging.getLogger(__name__)
 def put_system_to_sleep():
     """
     Put the local system to sleep using the appropriate OS command.
+
+    Raises
+    ------
+    OSError
+        If the operating system is not supported.
+    PermissionError
+        If the current process lacks the privileges needed to suspend.
+    subprocess.CalledProcessError
+        If the sleep command fails.
     """
     system = platform.system()
     logger.info("Putting system to sleep (OS: %s)", system)
 
-    if system == "Windows":
-        # rundll32 is the standard way to invoke sleep on Windows
-        subprocess.run(
-            ["rundll32.exe", "powrprof.dll,SetSuspendState", "0", "1", "0"],
-            check=True,
+    try:
+        if system == "Windows":
+            subprocess.run(
+                ["rundll32.exe", "powrprof.dll,SetSuspendState", "0", "1", "0"],
+                check=True,
+            )
+        elif system == "Linux":
+            subprocess.run(["systemctl", "suspend"], check=True)
+        else:
+            raise OSError(f"Unsupported OS for sleep: {system}")
+    except subprocess.CalledProcessError as exc:
+        logger.error(
+            "Sleep command failed (exit code %d). "
+            "Ensure the process has sufficient privileges (e.g. run as root "
+            "or with appropriate polkit policy on Linux).",
+            exc.returncode,
         )
-    elif system == "Linux":
-        subprocess.run(["systemctl", "suspend"], check=True)
-    else:
-        logger.error("Unsupported OS: %s — cannot put system to sleep.", system)
-        raise OSError(f"Unsupported OS for sleep: {system}")
+        raise PermissionError(
+            f"Failed to suspend system: {exc}"
+        ) from exc
 
 
 # ── Live metric collection (stub – replace with Zabbix agent query) ────────
@@ -96,7 +114,13 @@ class SleepManager:
         """Scale a single metric dict and return a 1-D numpy array."""
         import pandas as pd
         row_df = pd.DataFrame([metric_dict])[FEATURE_COLUMNS]
-        scaled = self.scaler.transform(row_df.values)
+        # Replace NaN / inf with 0 to prevent scaler failures
+        row_df = row_df.fillna(0.0).replace([np.inf, -np.inf], 0.0)
+        try:
+            scaled = self.scaler.transform(row_df.values)
+        except ValueError:
+            logger.warning("Scaler transform failed – using zeros.")
+            scaled = np.zeros((1, len(FEATURE_COLUMNS)))
         return scaled[0]
 
     def _update_buffer(self, scaled_row):

@@ -52,8 +52,11 @@ def cmd_train(args):
         logging.info("Labelling data …")
         df = label_dataframe(df)
 
-    # Fill NaN values
-    df[FEATURE_COLUMNS] = df[FEATURE_COLUMNS].fillna(0.0)
+    # Fill NaN values – forward-fill first, then zero for remaining gaps
+    df[FEATURE_COLUMNS] = df[FEATURE_COLUMNS].ffill().fillna(0.0)
+    nan_count = df[FEATURE_COLUMNS].isna().sum().sum()
+    if nan_count:
+        logging.warning("Filled %d missing values in feature columns", nan_count)
 
     # Fit scaler and scale
     scaler = fit_scaler(df)
