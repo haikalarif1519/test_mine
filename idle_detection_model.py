@@ -110,7 +110,9 @@ class IdleDetectionModel:
             path: File path. Defaults to self.model_path.
         """
         path = path or self.model_path
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        dir_name = os.path.dirname(path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
         joblib.dump(self.model, path)
         logger.info("Model saved to %s", path)
 

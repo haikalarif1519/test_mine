@@ -9,7 +9,7 @@ ZABBIX_PASSWORD = os.environ.get("ZABBIX_PASSWORD", "zabbix")
 
 # Zabbix item keys for the metrics we collect
 ZABBIX_ITEM_KEYS = {
-    "cpu_utilization": "system.cpu.util[,idle]",
+    "cpu_utilization": "system.cpu.util[,user]",
     "memory_utilization": "vm.memory.size[pused]",
     "disk_read": "vfs.dev.read.rate[sda]",
     "disk_write": "vfs.dev.write.rate[sda]",

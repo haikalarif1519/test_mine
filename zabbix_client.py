@@ -122,16 +122,30 @@ class ZabbixClient:
             metrics[metric_name] = value if value is not None else 0.0
         return metrics
 
-    def execute_remote_command(self, host_id, command):
-        """Execute a command on a remote host via Zabbix agent."""
-        result = self._api_request(
-            "script.execute",
-            {
-                "scriptid": "0",
-                "hostid": host_id,
-                "command": command,
-            },
-        )
+    def execute_remote_command(self, host_id, command, script_id=None):
+        """Execute a command on a remote host via Zabbix agent.
+
+        Args:
+            host_id: Zabbix host ID.
+            command: Command string to execute.
+            script_id: Zabbix script ID. If not provided, creates an ad-hoc
+                action via the globalscript API.
+        """
+        if script_id:
+            result = self._api_request(
+                "script.execute",
+                {"scriptid": str(script_id), "hostid": host_id},
+            )
+        else:
+            result = self._api_request(
+                "script.execute",
+                {
+                    "hostid": host_id,
+                    "command": command,
+                    "scope": "1",  # action scope
+                    "type": "0",   # script type
+                },
+            )
         logger.info("Executed command on host %s: %s", host_id, command)
         return result
 
