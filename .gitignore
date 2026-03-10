@@ -22,6 +22,8 @@ env/
 # Model artifacts
 models/*.h5
 models/*.keras
+models/*.pt
+models/*.pth
 models/*.pkl
 
 # Logs

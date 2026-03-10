@@ -16,7 +16,7 @@ import joblib
 import numpy as np
 
 import config
-from data_preprocessing import FEATURE_COLUMNS, scale_features
+from data_preprocessing import FEATURE_COLUMNS, RAW_COLUMNS, engineer_features
 from fuzzy_logic import build_fuzzy_system, evaluate_sleep_decision
 from lstm_model import load_model, predict_state, predict_state_probabilities
 
@@ -85,9 +85,9 @@ class SleepManager:
 
     Parameters
     ----------
-    model : keras.Model
-        Trained LSTM model.
-    scaler : sklearn.preprocessing.MinMaxScaler
+    model : lstm_model.SystemStateLSTM
+        Trained PyTorch LSTM model.
+    scaler : sklearn.preprocessing.StandardScaler
         Fitted scaler used during training.
     idle_timeout : int
         Number of consecutive idle predictions required (derived from
@@ -141,7 +141,10 @@ class SleepManager:
         Parameters
         ----------
         metrics : dict, optional
-            If *None*, calls :func:`get_latest_metrics`.
+            If *None*, calls :func:`get_latest_metrics`.  The dict should
+            contain all ``FEATURE_COLUMNS`` keys (raw + engineered).
+            If only raw metric keys are provided, engineered features will
+            be computed automatically.
 
         Returns
         -------
@@ -151,6 +154,12 @@ class SleepManager:
         """
         if metrics is None:
             metrics = get_latest_metrics()
+
+        # Auto-engineer features if only raw columns are provided
+        if "activity_score" not in metrics:
+            import pandas as pd
+            row_df = engineer_features(pd.DataFrame([metrics]))
+            metrics = row_df.iloc[0].to_dict()
 
         scaled = self._scale_row(metrics)
         self._update_buffer(scaled)
@@ -162,7 +171,7 @@ class SleepManager:
             )
             return None
 
-        sequence = np.array(self.sequence_buffer)
+        sequence = np.array(self.sequence_buffer, dtype=np.float32)
         state_name, probs = predict_state(self.model, sequence)
         idle_prob = float(probs[config.STATE_LABELS["idle"]])
 

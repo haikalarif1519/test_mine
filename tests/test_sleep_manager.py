@@ -5,7 +5,10 @@ import pytest
 
 from data_preprocessing import (
     FEATURE_COLUMNS,
+    RAW_COLUMNS,
+    compute_class_weights,
     create_sequences,
+    engineer_features,
     fit_scaler,
     generate_simulation_data,
     label_dataframe,
@@ -19,14 +22,16 @@ from sleep_manager import SleepManager
 def trained_model_and_scaler():
     """Build and train a small model on simulation data for testing."""
     df = generate_simulation_data(n_idle=100, n_low=100, n_high=100)
+    engineer_features(df)
     label_dataframe(df)
     scaler = fit_scaler(df)
     df_scaled = scale_features(df, scaler)
     X, y = create_sequences(df_scaled, seq_length=5)
+    class_weights = compute_class_weights(y)
 
-    model = build_model(seq_length=5, num_features=7, num_classes=3,
-                        lstm_units=16)
-    train_model(model, X, y, epochs=3, batch_size=32, validation_split=0.2)
+    model = build_model(num_features=10, num_classes=3, lstm_units=16)
+    train_model(model, X, y, class_weights=class_weights, epochs=3,
+                batch_size=32, validation_split=0.2)
     return model, scaler
 
 
@@ -67,7 +72,10 @@ class TestSleepManager:
             "disk_write": 100.0,
             "network_received": 500.0,
             "network_sent": 500.0,
-            "system_idle_time": 99.0,
+            "system_idle_time": 300.0,
+            "activity_score": 2.6,
+            "io_total": 1200.0,
+            "is_idle": 1.0,
         }
 
         import config
@@ -79,3 +87,17 @@ class TestSleepManager:
         # (with a small model trained on sim data this is likely but not
         #  guaranteed – we just check the counter is non-negative)
         assert manager.consecutive_idle >= 0
+
+    def test_step_auto_engineers_features_from_raw(self, trained_model_and_scaler):
+        """When only raw metrics are provided, engineered features are auto-computed."""
+        model, scaler = trained_model_and_scaler
+        manager = SleepManager(model, scaler, idle_timeout=5)
+
+        raw_metrics = {col: 2.0 for col in RAW_COLUMNS}
+
+        import config
+        for _ in range(config.SEQUENCE_LENGTH):
+            result = manager.step(raw_metrics)
+
+        assert result is not None
+        assert "state" in result

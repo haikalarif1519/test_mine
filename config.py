@@ -84,15 +84,21 @@ STATE_LABELS = {"idle": 0, "low_load": 1, "high_load": 2}
 STATE_NAMES = {v: k for k, v in STATE_LABELS.items()}
 
 # ---------------------------------------------------------------------------
-# LSTM Model Parameters
+# Feature Engineering
+# ---------------------------------------------------------------------------
+IS_IDLE_THRESHOLD_SECONDS = 180  # system_idle_time > 180s → is_idle = 1
+
+# ---------------------------------------------------------------------------
+# LSTM Model Parameters (PyTorch)
 # ---------------------------------------------------------------------------
 SEQUENCE_LENGTH = 10          # Number of time-steps fed to the LSTM
 LSTM_UNITS = 64               # Hidden units in each LSTM layer
 DROPOUT_RATE = 0.2
+LEARNING_RATE = 0.001
 EPOCHS = 50
 BATCH_SIZE = 32
 VALIDATION_SPLIT = 0.2
-NUM_FEATURES = 7              # Number of input features
+NUM_FEATURES = 10             # 7 raw metrics + 3 engineered features
 NUM_CLASSES = 3               # idle, low_load, high_load
 
 # ---------------------------------------------------------------------------
@@ -116,7 +122,7 @@ FUZZY_SLEEP_THRESHOLD = 0.5
 # ---------------------------------------------------------------------------
 IDLE_TIMEOUT_MINUTES = 10     # Put system to sleep after N minutes idle
 POLL_INTERVAL_SECONDS = 60    # How often to check system state
-MODEL_PATH = "models/lstm_model.keras"
+MODEL_PATH = "models/lstm_model.pt"
 SCALER_PATH = "models/scaler.pkl"
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@ Main entry-point for the AI-based System Sleep Manager.
 
 Provides sub-commands to:
   • generate and label simulation data
-  • train the LSTM model
+  • train the LSTM model (PyTorch)
   • run the sleep-monitoring loop
   • run the Zabbix → PostgreSQL data pipeline
 """
@@ -20,7 +20,10 @@ import pandas as pd
 import config
 from data_preprocessing import (
     FEATURE_COLUMNS,
+    RAW_COLUMNS,
+    compute_class_weights,
     create_sequences,
+    engineer_features,
     fit_scaler,
     generate_simulation_data,
     label_dataframe,
@@ -35,6 +38,7 @@ def cmd_generate(args):
     df = generate_simulation_data(
         n_idle=args.n_idle, n_low=args.n_low, n_high=args.n_high,
     )
+    df = engineer_features(df)
     df = label_dataframe(df)
 
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
@@ -52,6 +56,11 @@ def cmd_train(args):
         logging.info("Labelling data …")
         df = label_dataframe(df)
 
+    # Engineer features if not already present
+    if "activity_score" not in df.columns:
+        logging.info("Engineering features …")
+        df = engineer_features(df)
+
     # Fill NaN values – forward-fill first, then zero for remaining gaps
     df[FEATURE_COLUMNS] = df[FEATURE_COLUMNS].ffill().fillna(0.0)
     nan_count = df[FEATURE_COLUMNS].isna().sum().sum()
@@ -66,10 +75,15 @@ def cmd_train(args):
     X, y = create_sequences(df_scaled, seq_length=config.SEQUENCE_LENGTH)
     logging.info("Created %d sequences (shape %s)", len(X), X.shape)
 
+    # Compute class weights for imbalanced data
+    class_weights = compute_class_weights(y)
+    logging.info("Class weights: %s", dict(zip(config.STATE_NAMES.values(), class_weights)))
+
     # Build and train
     model = build_model()
     train_model(
         model, X, y,
+        class_weights=class_weights,
         epochs=args.epochs,
         batch_size=args.batch_size,
     )
@@ -108,9 +122,9 @@ def main():
 
     # generate
     p_gen = sub.add_parser("generate", help="Generate simulation data")
-    p_gen.add_argument("--n-idle", type=int, default=200)
-    p_gen.add_argument("--n-low", type=int, default=200)
-    p_gen.add_argument("--n-high", type=int, default=200)
+    p_gen.add_argument("--n-idle", type=int, default=375)
+    p_gen.add_argument("--n-low", type=int, default=1875)
+    p_gen.add_argument("--n-high", type=int, default=1875)
     p_gen.add_argument("-o", "--output", default="data/simulation_data.csv")
     p_gen.set_defaults(func=cmd_generate)
 
