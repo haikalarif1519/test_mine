@@ -163,8 +163,10 @@ def compute_class_weights(y):
     """
     Compute per-class weights inversely proportional to class frequency.
 
-    This addresses the class imbalance problem (e.g. 3 000 Idle vs
-    15 000 Low Load vs 15 000 High Load).
+    This addresses the class imbalance problem.  For example, in the real
+    deployment across 8 systems the distribution is approximately 3 000
+    Idle vs 15 000 Low Load vs 15 000 High Load.  The default simulation
+    uses the same 1 : 5 : 5 ratio at smaller scale.
 
     Parameters
     ----------

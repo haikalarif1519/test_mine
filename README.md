@@ -86,7 +86,7 @@ python main.py pipeline
 | Memory Utilization | ≤ 20 % | ≤ 60 % | > 60 % |
 | Disk Read/Write | ≤ 1 KB/s | ≤ 50 KB/s | > 50 KB/s |
 | Network In/Out | ≤ 5 KB/s | ≤ 100 KB/s | > 100 KB/s |
-| System Idle Time | ≥ 95 s | ≥ 50 s | < 50 s |
+| System Idle Time | ≥ 95 % | ≥ 50 % | < 50 % |
 
 ## Fuzzy Logic
 
