@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+import config
 from data_preprocessing import (
     FEATURE_COLUMNS,
     RAW_COLUMNS,
@@ -50,7 +51,6 @@ class TestSleepManager:
         metrics = {col: 2.0 for col in FEATURE_COLUMNS}
 
         # Fill the buffer
-        import config
         for _ in range(config.SEQUENCE_LENGTH):
             result = manager.step(metrics)
 
@@ -78,7 +78,6 @@ class TestSleepManager:
             "is_idle": 1.0,
         }
 
-        import config
         # Fill the buffer and run a few extra steps
         for _ in range(config.SEQUENCE_LENGTH + 3):
             manager.step(idle_metrics)
@@ -95,7 +94,6 @@ class TestSleepManager:
 
         raw_metrics = {col: 2.0 for col in RAW_COLUMNS}
 
-        import config
         for _ in range(config.SEQUENCE_LENGTH):
             result = manager.step(raw_metrics)
 
@@ -115,7 +113,6 @@ class TestMultiHostSleepManager:
 
         metrics = {col: 2.0 for col in FEATURE_COLUMNS}
 
-        import config
         # Only fill buffer for nuc-01
         for _ in range(config.SEQUENCE_LENGTH):
             manager.step(metrics, hostname="nuc-01")
@@ -132,7 +129,6 @@ class TestMultiHostSleepManager:
         )
         metrics = {col: 2.0 for col in FEATURE_COLUMNS}
 
-        import config
         for _ in range(config.SEQUENCE_LENGTH):
             result = manager.step(metrics, hostname="nuc-01")
 
