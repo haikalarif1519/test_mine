@@ -3,7 +3,8 @@ Sleep Manager.
 
 Monitors system state using the LSTM model and fuzzy controller, and puts
 the system to sleep when the idle condition is confirmed.  Supports both
-Windows and Ubuntu (Linux) systems.
+Windows and Ubuntu (Linux) systems, and can monitor multiple SUT/NUC
+hostnames simultaneously with independent per-host state.
 """
 
 import logging
@@ -25,9 +26,13 @@ logger = logging.getLogger(__name__)
 
 # ── Cross-platform sleep commands ───────────────────────────────────────────
 
-def put_system_to_sleep():
+def put_system_to_sleep(hostname=None):
     """
-    Put the local system to sleep using the appropriate OS command.
+    Put the system identified by *hostname* to sleep.
+
+    When *hostname* is ``None`` or ``"localhost"`` the local machine is
+    suspended.  For remote hosts the function logs a warning — remote
+    wake-on-LAN / SSH-based suspend should be implemented as needed.
 
     Raises
     ------
@@ -38,6 +43,14 @@ def put_system_to_sleep():
     subprocess.CalledProcessError
         If the sleep command fails.
     """
+    if hostname is not None and hostname != "localhost":
+        logger.warning(
+            "Remote sleep for host '%s' is not yet implemented. "
+            "Implement SSH-based suspend or wake-on-LAN as needed.",
+            hostname,
+        )
+        return
+
     system = platform.system()
     logger.info("Putting system to sleep (OS: %s)", system)
 
@@ -65,13 +78,16 @@ def put_system_to_sleep():
 
 # ── Live metric collection (stub – replace with Zabbix agent query) ────────
 
-def get_latest_metrics():
+def get_latest_metrics(hostname=None):
     """
     Return the latest metric values as a dict.
 
-    In production this would query the Zabbix agent or the PostgreSQL
-    database.  The stub returns a dict of zeros so unit tests and offline
-    runs can still exercise the pipeline.
+    Parameters
+    ----------
+    hostname : str, optional
+        The SUT/NUC hostname to query.  In production this would query the
+        Zabbix agent or PostgreSQL database for this host.  The stub
+        returns zeros so unit tests and offline runs still work.
     """
     return {col: 0.0 for col in FEATURE_COLUMNS}
 
@@ -80,8 +96,11 @@ def get_latest_metrics():
 
 class SleepManager:
     """
-    Continuously monitors system state and triggers sleep when the fuzzy
+    Monitors one or more SUT/NUC systems and triggers sleep when the fuzzy
     controller recommends it.
+
+    Each *hostname* has its own independent sequence buffer and consecutive-
+    idle counter so that predictions for one host never affect another.
 
     Parameters
     ----------
@@ -89,17 +108,21 @@ class SleepManager:
         Trained PyTorch LSTM model.
     scaler : sklearn.preprocessing.StandardScaler
         Fitted scaler used during training.
-    idle_timeout : int
+    hostnames : list[str], optional
+        List of SUT/NUC hostnames to monitor.  Defaults to
+        ``["localhost"]``.
+    idle_timeout : int, optional
         Number of consecutive idle predictions required (derived from
-        ``config.IDLE_TIMEOUT_MINUTES`` and ``config.POLL_INTERVAL_SECONDS``).
+        ``config.IDLE_TIMEOUT_MINUTES`` and ``config.POLL_INTERVAL_SECONDS``
+        when not given).
     """
 
-    def __init__(self, model, scaler, idle_timeout=None):
+    def __init__(self, model, scaler, hostnames=None, idle_timeout=None):
         self.model = model
         self.scaler = scaler
         self.fuzzy_sim = build_fuzzy_system()
-        self.sequence_buffer = []
-        self.consecutive_idle = 0
+        self.hostnames = hostnames or ["localhost"]
+        self._host_states = {}
 
         if idle_timeout is None:
             self.idle_timeout = (
@@ -107,6 +130,43 @@ class SleepManager:
             ) // config.POLL_INTERVAL_SECONDS
         else:
             self.idle_timeout = idle_timeout
+
+    # ── per-host state ─────────────────────────────────────────────────
+
+    def _get_host_state(self, hostname):
+        """Return the mutable state dict for *hostname*, creating it on
+        first access."""
+        if hostname not in self._host_states:
+            self._host_states[hostname] = {
+                "sequence_buffer": [],
+                "consecutive_idle": 0,
+            }
+        return self._host_states[hostname]
+
+    def get_consecutive_idle(self, hostname=None):
+        """Return the consecutive-idle count for *hostname*."""
+        if hostname is None:
+            hostname = self.hostnames[0]
+        return self._get_host_state(hostname)["consecutive_idle"]
+
+    # Backward-compatible properties that delegate to the first hostname
+    # so that existing single-host code and tests keep working.
+
+    @property
+    def sequence_buffer(self):
+        return self._get_host_state(self.hostnames[0])["sequence_buffer"]
+
+    @sequence_buffer.setter
+    def sequence_buffer(self, value):
+        self._get_host_state(self.hostnames[0])["sequence_buffer"] = value
+
+    @property
+    def consecutive_idle(self):
+        return self._get_host_state(self.hostnames[0])["consecutive_idle"]
+
+    @consecutive_idle.setter
+    def consecutive_idle(self, value):
+        self._get_host_state(self.hostnames[0])["consecutive_idle"] = value
 
     # ── helpers ─────────────────────────────────────────────────────────
 
@@ -123,20 +183,22 @@ class SleepManager:
             scaled = np.zeros((1, len(FEATURE_COLUMNS)))
         return scaled[0]
 
-    def _update_buffer(self, scaled_row):
-        """Append *scaled_row* and keep only the last ``SEQUENCE_LENGTH`` entries."""
-        self.sequence_buffer.append(scaled_row)
-        if len(self.sequence_buffer) > config.SEQUENCE_LENGTH:
-            self.sequence_buffer = self.sequence_buffer[-config.SEQUENCE_LENGTH:]
+    def _update_buffer(self, host_state, scaled_row):
+        """Append *scaled_row* to the host's buffer, keeping at most
+        ``SEQUENCE_LENGTH`` entries."""
+        buf = host_state["sequence_buffer"]
+        buf.append(scaled_row)
+        if len(buf) > config.SEQUENCE_LENGTH:
+            host_state["sequence_buffer"] = buf[-config.SEQUENCE_LENGTH:]
 
-    def _buffer_ready(self):
-        return len(self.sequence_buffer) >= config.SEQUENCE_LENGTH
+    def _buffer_ready(self, host_state):
+        return len(host_state["sequence_buffer"]) >= config.SEQUENCE_LENGTH
 
     # ── main loop ───────────────────────────────────────────────────────
 
-    def step(self, metrics=None):
+    def step(self, metrics=None, hostname=None):
         """
-        Execute a single monitoring step.
+        Execute a single monitoring step for *hostname*.
 
         Parameters
         ----------
@@ -145,15 +207,23 @@ class SleepManager:
             contain all ``FEATURE_COLUMNS`` keys (raw + engineered).
             If only raw metric keys are provided, engineered features will
             be computed automatically.
+        hostname : str, optional
+            The SUT/NUC hostname.  Defaults to the first entry in
+            ``self.hostnames``.
 
         Returns
         -------
-        dict with keys ``state``, ``idle_prob``, ``consecutive_idle``,
-        ``should_sleep``, ``sleep_score``.  Returns ``None`` if the
-        sequence buffer is not yet full.
+        dict with keys ``hostname``, ``state``, ``idle_prob``,
+        ``consecutive_idle``, ``should_sleep``, ``sleep_score``.
+        Returns ``None`` if the sequence buffer is not yet full.
         """
+        if hostname is None:
+            hostname = self.hostnames[0]
+
+        host_state = self._get_host_state(hostname)
+
         if metrics is None:
-            metrics = get_latest_metrics()
+            metrics = get_latest_metrics(hostname)
 
         # Auto-engineer features if only raw columns are provided
         if "activity_score" not in metrics:
@@ -162,55 +232,68 @@ class SleepManager:
             metrics = row_df.iloc[0].to_dict()
 
         scaled = self._scale_row(metrics)
-        self._update_buffer(scaled)
+        self._update_buffer(host_state, scaled)
 
-        if not self._buffer_ready():
+        if not self._buffer_ready(host_state):
             logger.info(
-                "Buffer filling: %d / %d",
-                len(self.sequence_buffer), config.SEQUENCE_LENGTH,
+                "[%s] Buffer filling: %d / %d",
+                hostname,
+                len(host_state["sequence_buffer"]),
+                config.SEQUENCE_LENGTH,
             )
             return None
 
-        sequence = np.array(self.sequence_buffer, dtype=np.float32)
+        sequence = np.array(host_state["sequence_buffer"], dtype=np.float32)
         state_name, probs = predict_state(self.model, sequence)
         idle_prob = float(probs[config.STATE_LABELS["idle"]])
 
         if state_name == "idle":
-            self.consecutive_idle += 1
+            host_state["consecutive_idle"] += 1
         else:
-            self.consecutive_idle = 0
+            host_state["consecutive_idle"] = 0
 
         should_sleep, sleep_score = evaluate_sleep_decision(
-            self.fuzzy_sim, idle_prob, self.consecutive_idle,
+            self.fuzzy_sim, idle_prob, host_state["consecutive_idle"],
         )
 
         logger.info(
-            "State=%s  idle_prob=%.3f  consecutive_idle=%d  "
+            "[%s] State=%s  idle_prob=%.3f  consecutive_idle=%d  "
             "sleep_score=%.3f  should_sleep=%s",
-            state_name, idle_prob, self.consecutive_idle,
+            hostname, state_name, idle_prob,
+            host_state["consecutive_idle"],
             sleep_score, should_sleep,
         )
 
         return {
+            "hostname": hostname,
             "state": state_name,
             "idle_prob": idle_prob,
-            "consecutive_idle": self.consecutive_idle,
+            "consecutive_idle": host_state["consecutive_idle"],
             "should_sleep": should_sleep,
             "sleep_score": sleep_score,
         }
 
     def run(self):
-        """Run the monitoring loop indefinitely."""
+        """Run the monitoring loop indefinitely for all hostnames."""
         logger.info(
-            "SleepManager started — polling every %ds, idle timeout=%d steps",
-            config.POLL_INTERVAL_SECONDS, self.idle_timeout,
+            "SleepManager started — polling every %ds, idle timeout=%d steps, "
+            "monitoring %d host(s): %s",
+            config.POLL_INTERVAL_SECONDS,
+            self.idle_timeout,
+            len(self.hostnames),
+            ", ".join(self.hostnames),
         )
         while True:
-            try:
-                result = self.step()
-                if result and result["should_sleep"]:
-                    logger.warning("SLEEP triggered!")
-                    put_system_to_sleep()
-            except Exception:
-                logger.exception("Error in monitoring step")
+            for hostname in self.hostnames:
+                try:
+                    result = self.step(hostname=hostname)
+                    if result and result["should_sleep"]:
+                        logger.warning(
+                            "SLEEP triggered for host '%s'!", hostname,
+                        )
+                        put_system_to_sleep(hostname)
+                except Exception:
+                    logger.exception(
+                        "Error in monitoring step for host '%s'", hostname,
+                    )
             time.sleep(config.POLL_INTERVAL_SECONDS)

@@ -101,3 +101,72 @@ class TestSleepManager:
 
         assert result is not None
         assert "state" in result
+
+
+class TestMultiHostSleepManager:
+    """Tests for multi-hostname monitoring support."""
+
+    def test_independent_per_host_state(self, trained_model_and_scaler):
+        """Each hostname should have its own sequence buffer and
+        consecutive_idle counter."""
+        model, scaler = trained_model_and_scaler
+        hosts = ["nuc-01", "nuc-02"]
+        manager = SleepManager(model, scaler, hostnames=hosts, idle_timeout=20)
+
+        metrics = {col: 2.0 for col in FEATURE_COLUMNS}
+
+        import config
+        # Only fill buffer for nuc-01
+        for _ in range(config.SEQUENCE_LENGTH):
+            manager.step(metrics, hostname="nuc-01")
+
+        # nuc-01 should have a full buffer, nuc-02 should be empty
+        assert len(manager._get_host_state("nuc-01")["sequence_buffer"]) == config.SEQUENCE_LENGTH
+        assert len(manager._get_host_state("nuc-02")["sequence_buffer"]) == 0
+
+    def test_step_with_hostname_returns_hostname(self, trained_model_and_scaler):
+        """The result dict should include the hostname."""
+        model, scaler = trained_model_and_scaler
+        manager = SleepManager(
+            model, scaler, hostnames=["nuc-01"], idle_timeout=5,
+        )
+        metrics = {col: 2.0 for col in FEATURE_COLUMNS}
+
+        import config
+        for _ in range(config.SEQUENCE_LENGTH):
+            result = manager.step(metrics, hostname="nuc-01")
+
+        assert result is not None
+        assert result["hostname"] == "nuc-01"
+
+    def test_default_hostname_is_localhost(self, trained_model_and_scaler):
+        """When no hostnames are provided, the default is 'localhost'."""
+        model, scaler = trained_model_and_scaler
+        manager = SleepManager(model, scaler, idle_timeout=5)
+        assert manager.hostnames == ["localhost"]
+
+    def test_consecutive_idle_per_host(self, trained_model_and_scaler):
+        """get_consecutive_idle returns per-host counts."""
+        model, scaler = trained_model_and_scaler
+        hosts = ["nuc-01", "nuc-02"]
+        manager = SleepManager(model, scaler, hostnames=hosts, idle_timeout=20)
+
+        # Both start at 0
+        assert manager.get_consecutive_idle("nuc-01") == 0
+        assert manager.get_consecutive_idle("nuc-02") == 0
+
+    def test_backward_compat_properties(self, trained_model_and_scaler):
+        """The old .consecutive_idle and .sequence_buffer properties
+        should still work, delegating to the first hostname."""
+        model, scaler = trained_model_and_scaler
+        manager = SleepManager(
+            model, scaler, hostnames=["host-a", "host-b"], idle_timeout=5,
+        )
+
+        # These should delegate to "host-a"
+        assert manager.consecutive_idle == 0
+        assert manager.sequence_buffer == []
+
+        manager.consecutive_idle = 5
+        assert manager.get_consecutive_idle("host-a") == 5
+        assert manager.get_consecutive_idle("host-b") == 0

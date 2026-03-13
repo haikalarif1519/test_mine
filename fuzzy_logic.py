@@ -56,9 +56,12 @@ def build_fuzzy_system():
     idle_prob["high"] = fuzz.trimf(idle_prob.universe, [0.6, 1.0, 1.0])
 
     # ── Membership functions: consecutive_idle ──────────────────────────
-    consec["few"] = fuzz.trimf(consec.universe, [0, 0, 3])
-    consec["some"] = fuzz.trimf(consec.universe, [2, 5, 7])
-    consec["many"] = fuzz.trimf(consec.universe, [6, 10, 10])
+    # "many" starts gaining membership at 8 and peaks at 12–15, so that
+    # the system is only put to sleep after ~10 consecutive idle steps
+    # (i.e. 10 minutes at 60-second polling).
+    consec["few"] = fuzz.trimf(consec.universe, [0, 0, 5])
+    consec["some"] = fuzz.trimf(consec.universe, [4, 7, 10])
+    consec["many"] = fuzz.trimf(consec.universe, [8, 15, 15])
 
     # ── Membership functions: sleep_decision ────────────────────────────
     sleep["no_sleep"] = fuzz.trimf(sleep.universe, [0.0, 0.0, 0.3])
@@ -126,6 +129,15 @@ def evaluate_sleep_decision(fuzzy_sim, idle_probability, consecutive_idle):
     sleep_score : float
         The raw defuzzified output (0-1).
     """
+    # Hard guard: never allow sleep below the minimum consecutive idle
+    # threshold (default 10 steps = 10 minutes at 60-second polling).
+    if consecutive_idle < config.MIN_CONSEC_IDLE_FOR_SLEEP:
+        logger.debug(
+            "Fuzzy: consecutive_idle=%d < min=%d → forced no-sleep",
+            consecutive_idle, config.MIN_CONSEC_IDLE_FOR_SLEEP,
+        )
+        return False, 0.0
+
     # Clamp inputs to valid ranges
     idle_probability = float(np.clip(idle_probability, 0.0, 1.0))
     consecutive_idle = int(np.clip(

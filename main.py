@@ -104,7 +104,8 @@ def cmd_monitor(args):
     model = load_model(config.MODEL_PATH)
     scaler = joblib.load(config.SCALER_PATH)
 
-    manager = SleepManager(model, scaler)
+    hostnames = [h.strip() for h in args.hostnames.split(",") if h.strip()]
+    manager = SleepManager(model, scaler, hostnames=hostnames)
     manager.run()
 
 
@@ -137,6 +138,12 @@ def main():
 
     # monitor
     p_mon = sub.add_parser("monitor", help="Run sleep monitoring loop")
+    p_mon.add_argument(
+        "--hostnames",
+        default="localhost",
+        help="Comma-separated list of SUT/NUC hostnames to monitor "
+             "(default: localhost)",
+    )
     p_mon.set_defaults(func=cmd_monitor)
 
     # pipeline

@@ -110,7 +110,12 @@ FUZZY_IDLE_PROB_HIGH = 1.0
 
 # Consecutive idle count range (number of consecutive idle predictions)
 FUZZY_CONSEC_LOW = 0
-FUZZY_CONSEC_HIGH = 10
+FUZZY_CONSEC_HIGH = 15
+
+# Hard minimum: system must be predicted idle for at least this many
+# consecutive polling intervals before sleep is allowed.
+# 10 steps × 60 s/step = 10 minutes.
+MIN_CONSEC_IDLE_FOR_SLEEP = 10
 
 # Sleep decision output range (0 – 1, where > 0.5 → sleep)
 FUZZY_SLEEP_LOW = 0.0
