@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List
 
+import torch
 import yaml
-from tensorflow.keras.models import load_model as keras_load_model
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -33,4 +33,6 @@ def ensure_dirs(config: dict) -> None:
 
 
 def load_saved_model(config: dict):
-    return keras_load_model(config["paths"]["model"])
+    model = torch.load(config["paths"]["model"], weights_only=False)
+    model.eval()
+    return model

@@ -9,8 +9,8 @@ def plot_loss_curve(history, output_dir: str):
     out.mkdir(parents=True, exist_ok=True)
 
     plt.figure(figsize=(8, 5))
-    plt.plot(history.history.get("loss", []), label="train_loss")
-    plt.plot(history.history.get("val_loss", []), label="val_loss")
+    plt.plot(history.get("loss", []), label="train_loss")
+    plt.plot(history.get("val_loss", []), label="val_loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.title("Training vs Validation Loss")

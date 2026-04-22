@@ -1,3 +1,4 @@
+import torch
 import pandas as pd
 
 from lstm_pipeline.data.data_loader import DataLoader
@@ -85,7 +86,7 @@ def main():
     for step, data in results.items():
         plot_confusion_matrix(data["confusion_matrix"], ["Idle", "Low Load", "High Load"], step, config["paths"]["logs"])
 
-    model.save(config["paths"]["model"])
+    torch.save(model, config["paths"]["model"])
     logger.info("Training complete. Model saved to %s", config["paths"]["model"])
 
 

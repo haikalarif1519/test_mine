@@ -1,9 +1,15 @@
 import numpy as np
+import torch
+import torch.nn.functional as F
 from sklearn.metrics import classification_report, confusion_matrix
 
 
 def evaluate_model(model, X_test, y_test):
-    y_prob = model.predict(X_test, verbose=0)
+    model.eval()
+    with torch.no_grad():
+        logits = model(torch.tensor(X_test, dtype=torch.float32))
+        y_prob = F.softmax(logits, dim=-1).numpy()
+
     y_pred = np.argmax(y_prob, axis=-1)
 
     labels = [0, 1, 2]

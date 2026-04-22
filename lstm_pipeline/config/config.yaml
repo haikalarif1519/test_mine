@@ -75,4 +75,4 @@ paths:
   logs: "lstm_pipeline/logs"
   profiles: "lstm_pipeline/saved_models/profiles"
   scaler: "lstm_pipeline/saved_models/scaler.pkl"
-  model: "lstm_pipeline/saved_models/global_lstm.keras"
+  model: "lstm_pipeline/saved_models/global_lstm.pt"
