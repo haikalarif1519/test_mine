@@ -63,7 +63,7 @@ def main():
 
     plot_class_distribution(processed["label"], config["paths"]["logs"])
 
-    X, y = create_sequences(
+    device_sequences = create_sequences(
         processed,
         feature_columns=config["feature_columns"],
         lookback=config["preprocessing"]["lookback"],
@@ -71,8 +71,7 @@ def main():
     )
 
     (X_train, y_train), (X_val, y_val), (X_test, y_test) = train_val_test_split(
-        X,
-        y,
+        device_sequences,
         train_ratio=config["preprocessing"]["train_ratio"],
         val_ratio=config["preprocessing"]["val_ratio"],
         test_ratio=config["preprocessing"]["test_ratio"],
