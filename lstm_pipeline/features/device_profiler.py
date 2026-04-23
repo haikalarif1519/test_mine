@@ -50,7 +50,14 @@ def compute_device_context(df: pd.DataFrame) -> dict:
         "evening": active_by_hour.loc[17:21].mean(),
         "night": pd.concat([active_by_hour.loc[22:23], active_by_hour.loc[0:5]]).mean(),
     }
-    peak_bucket = max(buckets, key=buckets.get)
+
+    # Multi-hot: flag every bucket whose activity rate is at least
+    # `peak_hour_threshold` (default 0.5) times the busiest bucket.
+    # This correctly captures bimodal patterns such as morning+evening
+    # instead of arbitrarily collapsing them to a single winner.
+    peak_rate = max(buckets.values())
+    threshold = 0.5
+    flags = {k: int(peak_rate > 0 and v >= threshold * peak_rate) for k, v in buckets.items()}
 
     cv = float(daily_active_minutes.std() / daily_active_minutes.mean()) if len(daily_active_minutes) > 1 and daily_active_minutes.mean() > 0 else 0.0
     consistency = float(np.clip(1.0 - cv, 0.0, 1.0))
@@ -59,10 +66,10 @@ def compute_device_context(df: pd.DataFrame) -> dict:
         "avg_active_hours_per_day": round(avg_active_hours, 4),
         "usage_rate_weekday": round(usage_rate_weekday, 4),
         "usage_rate_weekend": round(usage_rate_weekend, 4),
-        "peak_usage_hour_morning": int(peak_bucket == "morning"),
-        "peak_usage_hour_afternoon": int(peak_bucket == "afternoon"),
-        "peak_usage_hour_evening": int(peak_bucket == "evening"),
-        "peak_usage_hour_night": int(peak_bucket == "night"),
+        "peak_usage_hour_morning": flags["morning"],
+        "peak_usage_hour_afternoon": flags["afternoon"],
+        "peak_usage_hour_evening": flags["evening"],
+        "peak_usage_hour_night": flags["night"],
         "usage_consistency_score": round(consistency, 4),
     }
 
