@@ -27,13 +27,17 @@ def evaluate_model(model, X_test, y_test):
         mis_rate = float(((pred_i[high_mask] == 0).mean() if high_mask.any() else 0.0) * 100)
         flagged = mis_rate > 2.0
 
+        macro_f1 = report["macro avg"]["f1-score"]
+
         print(f"\n=== {step} ===")
         print("Confusion Matrix:\n", cm)
+        print(f"Macro-averaged F1: {macro_f1:.4f}")
         print(f"High Load -> Idle rate: {mis_rate:.2f}% {'[FLAGGED]' if flagged else '[OK]'}")
 
         results[step] = {
             "confusion_matrix": cm,
             "classification_report": report,
+            "macro_f1": macro_f1,
             "high_load_as_idle_rate_pct": mis_rate,
             "flagged": flagged,
         }

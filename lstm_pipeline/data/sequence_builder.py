@@ -2,6 +2,34 @@ import numpy as np
 import pandas as pd
 
 
+def oversample_minority_sequences(
+    X: np.ndarray,
+    y: np.ndarray,
+    minority_classes: tuple = (1, 2),
+    copies: int = 2,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Duplicate sequences that contain at least one minority-class target label.
+
+    Oversampling is done at the *sequence* level rather than on raw rows so
+    that the temporal structure of each window is preserved intact.  Only the
+    training split should be passed here; validation and test sets must not be
+    modified.
+
+    Parameters
+    ----------
+    X : (N, lookback, features) array of input sequences.
+    y : (N, predict_steps) array of target labels.
+    minority_classes : label values that are considered minority (default: Low Load=1, High Load=2).
+    copies : how many extra copies of each minority sequence to add.
+    """
+    minority_mask = np.isin(y, minority_classes).any(axis=1)
+    if not minority_mask.any() or copies < 1:
+        return X, y
+    X_out = np.concatenate([X] + [X[minority_mask]] * copies)
+    y_out = np.concatenate([y] + [y[minority_mask]] * copies)
+    return X_out, y_out
+
+
 def create_sequences(
     df: pd.DataFrame, feature_columns: list[str], lookback: int, predict_steps: list[int]
 ) -> list[tuple[np.ndarray, np.ndarray]]:
