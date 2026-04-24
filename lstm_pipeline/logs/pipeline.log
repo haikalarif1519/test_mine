@@ -1,0 +1,1 @@
+2026-04-24 08:11:30,376 | INFO | lstm_pipeline.data.preprocessor | Device SUT1: detected power-cycle gap 2026-02-01 08:00:00 → 2026-02-01 09:00:00 (60 min)

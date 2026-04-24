@@ -3,6 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
+from lstm_pipeline.data.preprocessor import Preprocessor
 from lstm_pipeline.data.sequence_builder import create_sequences, train_val_test_split
 from lstm_pipeline.features.feature_engineer import add_time_features
 
@@ -64,6 +65,80 @@ class PipelineRuleTests(unittest.TestCase):
         for split_labels, split_name in [(y_train, "train"), (y_val, "val"), (y_test, "test")]:
             self.assertIn(0.0, split_labels, msg=f"Device 1 missing from {split_name}")
             self.assertIn(1.0, split_labels, msg=f"Device 2 missing from {split_name}")
+
+    def test_power_cycle_injected_for_long_gaps(self):
+        """Rows synthesised inside a gap ≥ power_cycle_gap_minutes get systemstate='Power Cycle'
+        and zeroed hardware metrics; rows outside the gap keep their original state."""
+        config = {
+            "data": {"power_cycle_gap_minutes": 30},
+            "label_map": {"Idle": 0, "Low Load": 1, "High Load": 2, "Power Cycle": 3},
+            "feature_columns": ["cpu_utilization", "idle_time"],
+            "scale_columns": [],
+            "paths": {"scaler": "/tmp/test_scaler.pkl"},
+        }
+        preprocessor = Preprocessor(config)
+
+        # Two real observations separated by a 60-minute gap (well above the 30-min threshold).
+        t0 = pd.Timestamp("2026-02-01 08:00:00")
+        t1 = pd.Timestamp("2026-02-01 09:00:00")  # 60-min gap after t0
+        df = pd.DataFrame(
+            {
+                "device": ["SUT1", "SUT1"],
+                "datetime": [t0, t1],
+                "date": [t0.date(), t1.date()],
+                "systemstate": ["Idle", "Idle"],
+                "cpu_utilization": [5.0, 5.0],
+                "idle_time": [90.0, 90.0],
+            }
+        )
+
+        result = preprocessor.handle_missing(df)
+
+        # Rows strictly inside the gap (08:01 – 08:59) must be Power Cycle.
+        gap_rows = result[(result["datetime"] > t0) & (result["datetime"] < t1)]
+        self.assertGreater(len(gap_rows), 0, "Expected synthetic gap rows to be created")
+        self.assertTrue(
+            (gap_rows["systemstate"] == "Power Cycle").all(),
+            "All gap rows should be labelled Power Cycle",
+        )
+        self.assertTrue((gap_rows["cpu_utilization"] == 0.0).all(), "cpu_utilization should be zeroed in gap")
+        self.assertTrue((gap_rows["idle_time"] == 0.0).all(), "idle_time should be zeroed in gap")
+
+        # The two real boundary rows must keep their original state.
+        real_rows = result[result["datetime"].isin([t0, t1])]
+        self.assertTrue(
+            (real_rows["systemstate"] == "Idle").all(),
+            "Boundary rows should retain their original systemstate",
+        )
+
+    def test_short_gap_not_labelled_power_cycle(self):
+        """A gap shorter than the threshold must not introduce Power Cycle rows."""
+        config = {
+            "data": {"power_cycle_gap_minutes": 30},
+            "label_map": {"Idle": 0, "Low Load": 1, "High Load": 2, "Power Cycle": 3},
+            "feature_columns": ["cpu_utilization"],
+            "scale_columns": [],
+            "paths": {"scaler": "/tmp/test_scaler.pkl"},
+        }
+        preprocessor = Preprocessor(config)
+
+        t0 = pd.Timestamp("2026-02-01 08:00:00")
+        t1 = pd.Timestamp("2026-02-01 08:10:00")  # only 10-min gap — below threshold
+        df = pd.DataFrame(
+            {
+                "device": ["SUT1", "SUT1"],
+                "datetime": [t0, t1],
+                "date": [t0.date(), t1.date()],
+                "systemstate": ["Idle", "Idle"],
+                "cpu_utilization": [5.0, 5.0],
+            }
+        )
+
+        result = preprocessor.handle_missing(df)
+        self.assertFalse(
+            (result["systemstate"] == "Power Cycle").any(),
+            "Short gap should not produce Power Cycle rows",
+        )
 
 
 if __name__ == "__main__":

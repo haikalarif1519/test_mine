@@ -22,12 +22,54 @@ class Preprocessor:
     def handle_missing(self, df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
             return df
+
+        gap_minutes = self.config.get("data", {}).get("power_cycle_gap_minutes", 30)
+        gap_threshold = pd.Timedelta(minutes=gap_minutes)
+
+        # Hardware metric columns to zero out during a power-cycle gap.
+        # These are physically 0 when the device is off; keeping forward-filled
+        # Idle values would make Power Cycle rows indistinguishable from Idle.
+        hw_cols = [
+            c for c in [
+                "cpu_utilization", "memory_utilization",
+                "disk_write", "disk_read",
+                "network_sent", "network_received",
+                "idle_time",
+            ]
+            if c in df.columns
+        ]
+
         per_device = []
         for device, part in df.groupby("device", sort=False):
             part = part.set_index("datetime").sort_index()
+
+            # Detect gaps before resampling so we know which synthetic rows to relabel.
+            times = part.index
+            diffs = pd.Series(times, index=times).diff()
+            gap_end_times = times[diffs > gap_threshold]
+            gap_intervals = []
+            for gap_end in gap_end_times:
+                gap_start = times[times < gap_end][-1]
+                gap_intervals.append((gap_start, gap_end))
+                logger.info(
+                    "Device %s: detected power-cycle gap %s → %s (%d min)",
+                    device,
+                    gap_start,
+                    gap_end,
+                    int((gap_end - gap_start).total_seconds() / 60),
+                )
+
             part = part.resample("1min").ffill()
             part["device"] = device
             part["date"] = part.index.date
+
+            # Relabel synthetic rows inside each gap as Power Cycle.
+            for gap_start, gap_end in gap_intervals:
+                mask = (part.index > gap_start) & (part.index < gap_end)
+                part.loc[mask, "systemstate"] = "Power Cycle"
+                for col in hw_cols:
+                    part.loc[mask, col] = 0.0
+
             per_device.append(part.reset_index())
         return pd.concat(per_device, ignore_index=True)
 
