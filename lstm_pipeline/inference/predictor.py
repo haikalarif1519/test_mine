@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 
 
-CLASS_NAMES = ["Idle", "Low Load", "High Load"]
+CLASS_NAMES = ["Idle", "Low Load", "High Load", "Power Cycle"]
 STEP_NAMES = ["t+05", "t+10", "t+15"]
 
 

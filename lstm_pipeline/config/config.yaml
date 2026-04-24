@@ -58,13 +58,14 @@ label_map:
   Idle: 0
   Low Load: 1
   High Load: 2
+  Power Cycle: 3
 
 model:
   lstm_units_layer1: 64
   lstm_units_layer2: 32
   dropout: 0.2
   output_steps: 3
-  output_classes: 3
+  output_classes: 4
   batch_size: 32
   epochs: 50
   learning_rate: 0.001

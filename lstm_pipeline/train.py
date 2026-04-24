@@ -4,7 +4,7 @@ import pandas as pd
 from lstm_pipeline.data.data_loader import DataLoader
 from lstm_pipeline.data.db_connector import get_engine
 from lstm_pipeline.data.preprocessor import Preprocessor
-from lstm_pipeline.data.sequence_builder import create_sequences, oversample_minority_sequences, train_val_test_split
+from lstm_pipeline.data.sequence_builder import create_sequences, guarantee_power_cycle_in_splits, oversample_minority_sequences, train_val_test_split
 from lstm_pipeline.evaluation.evaluator import evaluate_model
 from lstm_pipeline.evaluation.visualizer import plot_class_distribution, plot_confusion_matrix, plot_loss_curve
 from lstm_pipeline.features.device_profiler import compute_device_context, save_device_profile
@@ -77,6 +77,10 @@ def main():
         test_ratio=config["preprocessing"]["test_ratio"],
     )
 
+    (X_train, y_train), (X_val, y_val), (X_test, y_test) = guarantee_power_cycle_in_splits(
+        (X_train, y_train), (X_val, y_val), (X_test, y_test)
+    )
+
     model = build_lstm_model(config)
     X_train, y_train = oversample_minority_sequences(X_train, y_train)
     history = train_model(model, X_train, y_train, X_val, y_val, config)
@@ -84,7 +88,7 @@ def main():
 
     results = evaluate_model(model, X_test, y_test)
     for step, data in results.items():
-        plot_confusion_matrix(data["confusion_matrix"], ["Idle", "Low Load", "High Load"], step, config["paths"]["logs"])
+        plot_confusion_matrix(data["confusion_matrix"], ["Idle", "Low Load", "High Load", "Power Cycle"], step, config["paths"]["logs"])
 
     torch.save(model, config["paths"]["model"])
     logger.info("Training complete. Model saved to %s", config["paths"]["model"])

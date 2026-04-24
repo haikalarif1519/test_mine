@@ -5,7 +5,7 @@ import pandas as pd
 def oversample_minority_sequences(
     X: np.ndarray,
     y: np.ndarray,
-    minority_classes: tuple = (1, 2),
+    minority_classes: tuple = (1, 2, 3),
     copies: int = 2,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Duplicate sequences that contain at least one minority-class target label.
@@ -19,7 +19,8 @@ def oversample_minority_sequences(
     ----------
     X : (N, lookback, features) array of input sequences.
     y : (N, predict_steps) array of target labels.
-    minority_classes : label values that are considered minority (default: Low Load=1, High Load=2).
+    minority_classes : label values that are considered minority
+        (default: Low Load=1, High Load=2, Power Cycle=3).
     copies : how many extra copies of each minority sequence to add.
     """
     minority_mask = np.isin(y, minority_classes).any(axis=1)
@@ -116,3 +117,72 @@ def train_val_test_split(
         (np.concatenate(X_val_parts), np.concatenate(y_val_parts)),
         (np.concatenate(X_test_parts), np.concatenate(y_test_parts)),
     )
+
+
+def guarantee_power_cycle_in_splits(
+    train: tuple[np.ndarray, np.ndarray],
+    val: tuple[np.ndarray, np.ndarray],
+    test: tuple[np.ndarray, np.ndarray],
+    power_cycle_label: int = 3,
+    min_samples: int = 2,
+) -> tuple[
+    tuple[np.ndarray, np.ndarray],
+    tuple[np.ndarray, np.ndarray],
+    tuple[np.ndarray, np.ndarray],
+]:
+    """Ensure Power Cycle sequences appear in the validation and test splits.
+
+    Because Power Cycle events are rare and clustered near the start of each
+    device's recording window, a strict chronological split can leave val/test
+    with zero Power Cycle examples.  This makes it impossible to measure how
+    well the model detects that class during training and evaluation.
+
+    This function *copies* up to ``min_samples`` Power Cycle sequences from
+    the training split into any val/test split that lacks them.  The sequences
+    are copied (not moved) so that the already-tiny Power Cycle representation
+    in the training set is not further reduced.
+
+    Parameters
+    ----------
+    train, val, test : (X, y) array pairs as returned by ``train_val_test_split``.
+    power_cycle_label : integer label used for the Power Cycle class (default 3).
+    min_samples : maximum number of Power Cycle sequences to copy into each
+        split that is missing them (default 2).
+
+    Returns
+    -------
+    Updated (train, val, test) tuples.  train is returned unchanged; val and
+    test may have extra Power Cycle sequences appended.
+    """
+    X_train, y_train = train
+    X_val, y_val = val
+    X_test, y_test = test
+
+    if y_train.ndim == 1:
+        pc_mask = y_train == power_cycle_label
+    else:
+        pc_mask = np.isin(y_train, power_cycle_label).any(axis=1)
+
+    pc_indices = np.where(pc_mask)[0]
+    if len(pc_indices) == 0:
+        return train, val, test
+
+    n_to_copy = min(min_samples, len(pc_indices))
+    chosen = pc_indices[:n_to_copy]
+
+    def _has_power_cycle(y: np.ndarray) -> bool:
+        if y.size == 0:
+            return False
+        if y.ndim == 1:
+            return bool((y == power_cycle_label).any())
+        return bool(np.isin(y, power_cycle_label).any())
+
+    if not _has_power_cycle(y_val):
+        X_val = np.concatenate([X_val, X_train[chosen]])
+        y_val = np.concatenate([y_val, y_train[chosen]])
+
+    if not _has_power_cycle(y_test):
+        X_test = np.concatenate([X_test, X_train[chosen]])
+        y_test = np.concatenate([y_test, y_train[chosen]])
+
+    return (X_train, y_train), (X_val, y_val), (X_test, y_test)
