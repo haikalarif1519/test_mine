@@ -1,0 +1,80 @@
+database:
+  host: localhost
+  port: 5432
+  name: lab_power
+  user: postgres
+  password: postgres
+
+devices:
+  - SUT1
+  - SUT2
+  - SUT3
+
+data:
+  start_date: "2026-02-01"
+  end_date: "2026-02-28"
+  sampling_interval_minutes: 1
+  table_name_format: "{device}_{date}"
+  power_cycle_gap_minutes: 30
+
+preprocessing:
+  lookback: 30
+  predict_steps: [5, 10, 15]
+  train_ratio: 0.625
+  val_ratio: 0.25
+  test_ratio: 0.125
+
+feature_columns:
+  - cpu_utilization
+  - memory_utilization
+  - disk_write
+  - disk_read
+  - network_sent
+  - network_received
+  - idle_time
+  - hour
+  - day_of_week
+  - is_weekend
+  - is_working_hour
+  - avg_active_hours_per_day
+  - usage_rate_weekday
+  - usage_rate_weekend
+  - peak_usage_hour_morning
+  - peak_usage_hour_afternoon
+  - peak_usage_hour_evening
+  - peak_usage_hour_night
+  - usage_consistency_score
+
+scale_columns:
+  - cpu_utilization
+  - memory_utilization
+  - disk_write
+  - disk_read
+  - network_sent
+  - network_received
+  - idle_time
+  - avg_active_hours_per_day
+
+label_map:
+  Idle: 0
+  Low Load: 1
+  High Load: 2
+  Power Cycle: 3
+
+model:
+  lstm_units_layer1: 64
+  lstm_units_layer2: 32
+  dropout: 0.2
+  output_steps: 3
+  output_classes: 4
+  batch_size: 32
+  epochs: 50
+  learning_rate: 0.001
+  patience: 10
+
+paths:
+  saved_models: "lstm_pipeline/saved_models"
+  logs: "lstm_pipeline/logs"
+  profiles: "lstm_pipeline/saved_models/profiles"
+  scaler: "lstm_pipeline/saved_models/scaler.pkl"
+  model: "lstm_pipeline/saved_models/global_lstm.pt"
